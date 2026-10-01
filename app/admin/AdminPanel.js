@@ -246,9 +246,24 @@ export default function AdminPanel({ initialSlides, initialSettings, storage }) 
             Figma(.fig) 파일은 Figma에서 PDF 또는 PNG로 내보낸 뒤 올려주세요.
           </p>
 
+          {storage === "missing" ? (
+            <div className="notice">
+              <strong>Vercel Blob 저장소가 연결되지 않아 업로드·저장을 할 수 없습니다.</strong>
+              <ol>
+                <li>Vercel 프로젝트 → Storage 탭 → Create → Blob (접근 방식 Public) → 이 프로젝트에 연결</li>
+                <li>Settings → Environment Variables에 BLOB_READ_WRITE_TOKEN이 생겼는지 확인</li>
+                <li>Deployments → 최신 배포 → Redeploy</li>
+              </ol>
+            </div>
+          ) : (
+            <p className="storage-badge">
+              저장 위치: {storage === "blob" ? "Vercel Blob" : "로컬 data 폴더"}
+            </p>
+          )}
+
           <div
             className={over ? "drop over" : "drop"}
-            onClick={() => !busy && inputRef.current?.click()}
+            onClick={() => !busy && storage !== "missing" && inputRef.current?.click()}
             onDragOver={(e) => {
               e.preventDefault();
               setOver(true);
@@ -257,7 +272,7 @@ export default function AdminPanel({ initialSlides, initialSettings, storage }) 
             onDrop={(e) => {
               e.preventDefault();
               setOver(false);
-              handleFiles(e.dataTransfer.files);
+              if (storage !== "missing") handleFiles(e.dataTransfer.files);
             }}
           >
             {busy ? (

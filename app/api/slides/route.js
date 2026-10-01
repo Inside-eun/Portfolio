@@ -1,5 +1,5 @@
 import { isAdmin } from "@/lib/auth";
-import { USE_BLOB, clearSlides, listSlideData, sanitizeLinks } from "@/lib/store";
+import { USE_BLOB, clearSlides, guardWrite, listSlideData, sanitizeLinks } from "@/lib/store";
 import { commitSlides, isBlobUrl } from "@/lib/blob-store";
 import { addSlide, clearSlides as clearLocalSlides, MIME } from "@/lib/local-store";
 
@@ -16,7 +16,7 @@ export async function GET() {
 // mode is "replace" (default) or "append".
 export async function POST(req) {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  return USE_BLOB ? commitBlob(req) : uploadLocal(req);
+  return guardWrite(() => (USE_BLOB ? commitBlob(req) : uploadLocal(req)));
 }
 
 async function commitBlob(req) {
@@ -58,6 +58,8 @@ async function uploadLocal(req) {
 
 export async function DELETE() {
   if (!(await isAdmin())) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  await clearSlides();
-  return Response.json({ slides: [] });
+  return guardWrite(async () => {
+    await clearSlides();
+    return Response.json({ slides: [] });
+  });
 }
