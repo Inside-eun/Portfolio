@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Contact from "./Contact";
+import { downloadSlidesPdf } from "@/lib/make-pdf";
 
 const GESTURE_GAP_MS = 150; // wheel silence that marks the start of a new gesture
 const MIN_STEP_MS = 300; // floor between wheel-triggered steps
 const WHEEL_TRIGGER_PX = 8; // scroll distance within a gesture that turns the page
 const SWIPE_THRESHOLD = 50;
 
-export default function Viewer({ slides, settings }) {
+export default function Viewer({ slides, settings, pdfUrl }) {
   // Pages = every slide + the contact page at the end.
   const total = slides.length + 1;
   const [index, setIndex] = useState(0);
+  const [pdfProgress, setPdfProgress] = useState(null); // "3/12" while building a PDF
   const wheel = useRef({ lastEvent: 0, lastStep: 0, lastAbs: 0, sum: 0, fired: false });
   const touchStart = useRef(null);
   const contactRef = useRef(null);
@@ -110,6 +112,22 @@ export default function Viewer({ slides, settings }) {
     };
   }, [step, go, total]);
 
+  // Without a saved PDF, build one from the slide images right in the browser.
+  const buildPdf = async () => {
+    if (pdfProgress) return;
+    setPdfProgress("0/" + slides.length);
+    try {
+      await downloadSlidesPdf(slides, `${settings.name || "portfolio"}_portfolio.pdf`, (n, t) =>
+        setPdfProgress(`${n}/${t}`)
+      );
+    } catch (e) {
+      console.error(e);
+      alert("PDF를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setPdfProgress(null);
+    }
+  };
+
   const isContact = index === total - 1;
   const pad = (n) => String(n).padStart(2, "0");
 
@@ -184,13 +202,56 @@ export default function Viewer({ slides, settings }) {
             <span className="counter-sep" />
             <span>{pad(total - 1)}</span>
           </div>
-          {!isContact && (
-            <button className="contact-jump" onClick={() => go(total - 1)}>
-              Contact
-            </button>
-          )}
         </>
       )}
+
+      {/* Bottom-right actions. Hidden buttons keep their slot (visibility) so
+          the stack doesn't jump between pages. */}
+      <div className="fab-stack">
+        {pdfUrl ? (
+          <a className="fab" href={pdfUrl} download>
+            <DownloadIcon />
+            PDF
+          </a>
+        ) : (
+          slides.length > 0 && (
+            <button className="fab" onClick={buildPdf} disabled={Boolean(pdfProgress)} aria-busy={Boolean(pdfProgress)}>
+              <DownloadIcon />
+              {pdfProgress ? `PDF ${pdfProgress}` : "PDF"}
+            </button>
+          )
+        )}
+        {total > 1 && (
+          <>
+            <button
+              className={isContact ? "fab fab-contact is-hidden" : "fab fab-contact"}
+              tabIndex={isContact ? -1 : 0}
+              onClick={() => go(total - 1)}
+            >
+              Contact
+            </button>
+            <button
+              className={index === 0 ? "fab is-hidden" : "fab"}
+              tabIndex={index === 0 ? -1 : 0}
+              aria-label="맨 위로"
+              onClick={() => go(0)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 20V6m-6 6 6-6 6 6M5 4h14" />
+              </svg>
+              Top
+            </button>
+          </>
+        )}
+      </div>
     </main>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 4v11m-5-5 5 5 5-5M5 20h14" />
+    </svg>
   );
 }

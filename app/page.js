@@ -1,9 +1,9 @@
-import { getSettings, listSlideData } from "@/lib/store";
+import { getPdfUrl, getSettings, listSlideData } from "@/lib/store";
 import Viewer from "./Viewer";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [slides, settings] = await Promise.all([listSlideData(), getSettings()]);
-  return <Viewer slides={slides} settings={settings} />;
+  const [slides, settings, pdfUrl] = await Promise.all([listSlideData(), getSettings(), getPdfUrl()]);
+  return <Viewer slides={slides} settings={settings} pdfUrl={pdfUrl} />;
 }

@@ -121,8 +121,37 @@ async function uploadToServer(items, mode, say, setSlides) {
   }
 }
 
-export default function AdminPanel({ initialSlides, initialSettings, storage, presigned }) {
+// Saves the PDF visitors can download from the viewer.
+async function uploadPdf(file, storage, presigned) {
+  let res;
+  if (storage === "blob") {
+    const { upload, uploadPresigned } = await import("@vercel/blob/client");
+    const send = presigned ? uploadPresigned : upload;
+    const { url } = await send(`pdf/portfolio-${Date.now().toString(36)}.pdf`, file, {
+      access: "public",
+      handleUploadUrl: "/api/blob-upload",
+      contentType: "application/pdf",
+    });
+    res = await fetch("/api/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+  } else {
+    const form = new FormData();
+    form.set("file", new Blob([file], { type: "application/pdf" }));
+    res = await fetch("/api/pdf", { method: "POST", body: form });
+  }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `PDF 저장 실패 (${res.status})`);
+  return json.pdf;
+}
+
+const isPdf = (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+
+export default function AdminPanel({ initialSlides, initialSettings, initialPdf, storage, presigned }) {
   const [slides, setSlides] = useState(initialSlides);
+  const [pdf, setPdf] = useState(initialPdf);
   const [settings, setSettings] = useState(initialSettings);
   const [mode, setMode] = useState("replace");
   const [busy, setBusy] = useState(false);
@@ -130,6 +159,7 @@ export default function AdminPanel({ initialSlides, initialSettings, storage, pr
   const [savedMsg, setSavedMsg] = useState("");
   const [over, setOver] = useState(false);
   const inputRef = useRef(null);
+  const pdfInputRef = useRef(null);
 
   const say = (text, error = false) => setStatus({ text, error });
 
@@ -152,7 +182,7 @@ export default function AdminPanel({ initialSlides, initialSettings, storage, pr
       const base = mode === "replace" ? 0 : slides.length;
       const items = [];
       for (const f of files) {
-        if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
+        if (isPdf(f)) {
           const start = base + items.length;
           const pages = await pdfToSlides(f, (n, total) => say(`PDF 변환 중… ${f.name} (${n}/${total})`));
           for (const p of pages) {
@@ -170,10 +200,17 @@ export default function AdminPanel({ initialSlides, initialSettings, storage, pr
 
       if (storage === "blob") await uploadToBlob(items, mode, say, setSlides, presigned);
       else await uploadToServer(items, mode, say, setSlides);
+      // A single PDF that replaces the deck also becomes the download file.
+      const pdfSaved = mode === "replace" && files.length === 1 && isPdf(files[0]);
+      if (pdfSaved) {
+        say("다운로드용 PDF 저장 중…");
+        setPdf(await uploadPdf(files[0], storage, presigned));
+      }
       const linkCount = items.reduce((n, it) => n + it.links.length, 0);
       say(
         `완료! ${items.length}장의 슬라이드를 ${mode === "replace" ? "새로 올렸습니다" : "추가했습니다"}` +
-          (linkCount ? ` (링크 ${linkCount}개 포함).` : ".")
+          (linkCount ? ` (링크 ${linkCount}개 포함)` : "") +
+          (pdfSaved ? " 다운로드용 PDF도 함께 저장했습니다." : ".")
       );
     } catch (e) {
       say(e.message || "처리 중 오류가 발생했습니다", true);
@@ -189,6 +226,34 @@ export default function AdminPanel({ initialSlides, initialSettings, storage, pr
     if (res.ok) {
       setSlides([]);
       say("모든 슬라이드를 삭제했습니다.");
+    }
+  }
+
+  async function handlePdf(file) {
+    if (!file || busy) return;
+    if (!isPdf(file)) {
+      say("PDF 파일만 올릴 수 있습니다", true);
+      return;
+    }
+    setBusy(true);
+    try {
+      say("다운로드용 PDF 업로드 중…");
+      setPdf(await uploadPdf(file, storage, presigned));
+      say("다운로드용 PDF를 저장했습니다.");
+    } catch (e) {
+      say(e.message || "처리 중 오류가 발생했습니다", true);
+    } finally {
+      setBusy(false);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+    }
+  }
+
+  async function deletePdf() {
+    if (!confirm("다운로드용 PDF를 삭제할까요?")) return;
+    const res = await fetch("/api/pdf", { method: "DELETE" });
+    if (res.ok) {
+      setPdf(null);
+      say("다운로드용 PDF를 삭제했습니다.");
     }
   }
 
@@ -245,6 +310,8 @@ export default function AdminPanel({ initialSlides, initialSettings, storage, pr
           <h2>포트폴리오 업로드</h2>
           <p className="sub">
             PDF는 페이지마다 한 장의 슬라이드로 변환됩니다. 이미지(PNG·JPG·WebP)는 선택한 순서대로 올라갑니다.
+            <br />
+            PDF 한 개로 기존 슬라이드를 교체하면 그 PDF가 방문자용 다운로드 파일로도 저장됩니다.
             <br />
             Figma(.fig) 파일은 Figma에서 PDF 또는 PNG로 내보낸 뒤 올려주세요.
           </p>
@@ -311,6 +378,38 @@ export default function AdminPanel({ initialSlides, initialSettings, storage, pr
             </button>
           </div>
           <p className={status.error ? "status error" : "status"}>{status.text}</p>
+
+          <div className="pdf-row">
+            <span>
+              다운로드용 PDF:{" "}
+              {pdf ? (
+                <a href={pdf} target="_blank" rel="noreferrer">
+                  저장됨
+                </a>
+              ) : (
+                <span className="muted">없음 (사이트에 PDF 버튼이 표시되지 않습니다)</span>
+              )}
+            </span>
+            <span className="row">
+              <button
+                className="btn"
+                onClick={() => pdfInputRef.current?.click()}
+                disabled={busy || storage === "missing"}
+              >
+                {pdf ? "PDF 교체" : "PDF 올리기"}
+              </button>
+              <button className="btn danger" onClick={deletePdf} disabled={busy || !pdf}>
+                PDF 삭제
+              </button>
+            </span>
+            <input
+              ref={pdfInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              hidden
+              onChange={(e) => handlePdf(e.target.files?.[0])}
+            />
+          </div>
 
           {slides.length > 0 ? (
             <div className="thumbs">

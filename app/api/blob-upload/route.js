@@ -5,13 +5,18 @@ import { BLOB_OIDC, USE_BLOB, STORAGE_MISSING_MESSAGE } from "@/lib/store";
 
 export const runtime = "nodejs";
 
-const UPLOAD_RULES = {
+const IMAGE_RULES = {
   allowedContentTypes: ["image/webp", "image/png", "image/jpeg", "image/gif", "image/avif"],
   maximumSizeInBytes: 50 * 1024 * 1024,
 };
+const PDF_RULES = { allowedContentTypes: ["application/pdf"], maximumSizeInBytes: 200 * 1024 * 1024 };
 
-// The browser picks a unique name under slides/ (see AdminPanel).
-const validPathname = (p) => /^slides\/[\w.-]+\.(webp|png|jpe?g|gif|avif)$/i.test(p);
+// The browser picks a unique name under slides/ or pdf/ (see AdminPanel).
+function rulesFor(pathname) {
+  if (/^slides\/[\w.-]+\.(webp|png|jpe?g|gif|avif)$/i.test(pathname)) return IMAGE_RULES;
+  if (/^pdf\/[\w.-]+\.pdf$/i.test(pathname)) return PDF_RULES;
+  throw new Error("Invalid pathname");
+}
 
 // Lets the admin's browser upload slide images straight to Vercel Blob
 // (bypassing the serverless request-size limit). OIDC-connected stores use
@@ -27,17 +32,16 @@ export async function POST(request) {
           body,
           request,
           getSignedToken: async (pathname) => {
-            if (!validPathname(pathname)) throw new Error("Invalid pathname");
-            const token = await issueSignedToken({ pathname, operations: ["put"], ...UPLOAD_RULES });
-            return { token, urlOptions: { ...UPLOAD_RULES, addRandomSuffix: false } };
+            const rules = rulesFor(pathname);
+            const token = await issueSignedToken({ pathname, operations: ["put"], ...rules });
+            return { token, urlOptions: { ...rules, addRandomSuffix: false } };
           },
         })
       : await handleUpload({
           body,
           request,
           onBeforeGenerateToken: async (pathname) => {
-            if (!validPathname(pathname)) throw new Error("Invalid pathname");
-            return { ...UPLOAD_RULES, addRandomSuffix: false };
+            return { ...rulesFor(pathname), addRandomSuffix: false };
           },
         });
     return Response.json(result);
