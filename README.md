@@ -15,7 +15,7 @@ PDF/이미지를 업로드하면 한 장씩 넘겨보는 슬라이드 포트폴�
 
 | 환경 | 저장 위치 |
 |---|---|
-| Vercel (`BLOB_READ_WRITE_TOKEN` 있음) | Vercel Blob — 이미지는 브라우저에서 Blob으로 바로 업로드 |
+| Vercel (`BLOB_STORE_ID` 또는 `BLOB_READ_WRITE_TOKEN` 있음) | Vercel Blob — 이미지는 브라우저에서 Blob으로 바로 업로드 |
 | 로컬 (토큰 없음) | `./data` 폴더 (`PORTFOLIO_DATA_DIR`로 위치 변경 가능) |
 
 ## 로컬 실행
@@ -31,7 +31,7 @@ npm run dev                  # http://localhost:3000
 1. Vercel에서 **Add New → Project** → 이 GitHub 저장소를 Import (프레임워크는 Next.js로 자동 인식).
 2. **Environment Variables**에 `ADMIN_PASSWORD` 추가 후 Deploy.
 3. 프로젝트의 **Storage** 탭 → **Create → Blob** → 접근 방식 **Public**으로 생성하고 이 프로젝트에 연결.
-   (연결하면 `BLOB_READ_WRITE_TOKEN`이 자동으로 추가됩니다.)
+   (연결하면 `BLOB_STORE_ID`(OIDC 방식) 또는 `BLOB_READ_WRITE_TOKEN`이 자동으로 추가됩니다. 둘 다 지원합니다.)
 4. **Deployments**에서 최신 배포를 **Redeploy** (새 환경 변수 반영).
 5. `https://<도메인>/admin`에 로그인해 PDF 업로드 · 연락처 저장.
 

@@ -77,13 +77,16 @@ const EXT = { "image/webp": "webp", "image/png": "png", "image/jpeg": "jpg", "im
 
 // Vercel: each image goes straight from the browser to Blob storage, then the
 // ordered list (with links) is committed in one request.
-async function uploadToBlob(items, mode, say, setSlides) {
-  const { upload } = await import("@vercel/blob/client");
+async function uploadToBlob(items, mode, say, setSlides, presigned) {
+  const { upload, uploadPresigned } = await import("@vercel/blob/client");
+  const send = presigned ? uploadPresigned : upload; // OIDC-connected stores use presigned URLs
+  const batchId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const uploaded = [];
   for (let i = 0; i < items.length; i++) {
     say(`업로드 중… (${i + 1}/${items.length})`);
     const { blob, links } = items[i];
-    const { url } = await upload(`slides/slide.${EXT[blob.type] ?? "png"}`, blob, {
+    const pathname = `slides/${batchId}-${String(i + 1).padStart(3, "0")}.${EXT[blob.type] ?? "png"}`;
+    const { url } = await send(pathname, blob, {
       access: "public",
       handleUploadUrl: "/api/blob-upload",
       contentType: blob.type,
@@ -118,7 +121,7 @@ async function uploadToServer(items, mode, say, setSlides) {
   }
 }
 
-export default function AdminPanel({ initialSlides, initialSettings, storage }) {
+export default function AdminPanel({ initialSlides, initialSettings, storage, presigned }) {
   const [slides, setSlides] = useState(initialSlides);
   const [settings, setSettings] = useState(initialSettings);
   const [mode, setMode] = useState("replace");
@@ -165,7 +168,7 @@ export default function AdminPanel({ initialSlides, initialSettings, storage }) 
         }
       }
 
-      if (storage === "blob") await uploadToBlob(items, mode, say, setSlides);
+      if (storage === "blob") await uploadToBlob(items, mode, say, setSlides, presigned);
       else await uploadToServer(items, mode, say, setSlides);
       const linkCount = items.reduce((n, it) => n + it.links.length, 0);
       say(
@@ -251,7 +254,7 @@ export default function AdminPanel({ initialSlides, initialSettings, storage }) 
               <strong>Vercel Blob 저장소가 연결되지 않아 업로드·저장을 할 수 없습니다.</strong>
               <ol>
                 <li>Vercel 프로젝트 → Storage 탭 → Create → Blob (접근 방식 Public) → 이 프로젝트에 연결</li>
-                <li>Settings → Environment Variables에 BLOB_READ_WRITE_TOKEN이 생겼는지 확인</li>
+                <li>Settings → Environment Variables에 BLOB_STORE_ID(또는 BLOB_READ_WRITE_TOKEN)가 생겼는지 확인</li>
                 <li>Deployments → 최신 배포 → Redeploy</li>
               </ol>
             </div>
